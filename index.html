@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consolidador de archivos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2A33;
+    --ink-soft:#5A6B72;
+    --paper:#FAFBF8;
+    --card:#FFFFFF;
+    --grid:#E2E8E0;
+    --verde:#1F7A4D;
+    --verde-suave:#E8F3EC;
+    --alerta:#B4560F;
+    --alerta-suave:#FBEEE2;
+    --radius:10px;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    line-height:1.5;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:32px 32px;
+    background-attachment:fixed;
+    min-height:100vh;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 20px 80px}
+
+  header{margin-bottom:36px}
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:2rem;font-weight:700;letter-spacing:-.02em;
+    display:flex;align-items:center;gap:12px;
+  }
+  h1 .cell{
+    display:inline-block;width:34px;height:34px;border-radius:8px;
+    background:var(--verde);color:#fff;
+    font-family:'IBM Plex Mono',monospace;font-size:1.05rem;font-weight:500;
+    text-align:center;line-height:34px;
+  }
+  header p{color:var(--ink-soft);margin-top:6px;max-width:60ch}
+
+  .step{
+    background:var(--card);border:1px solid var(--grid);border-radius:var(--radius);
+    padding:24px;margin-bottom:24px;
+    box-shadow:0 1px 2px rgba(27,42,51,.04);
+  }
+  .step-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+  .step-num{
+    font-family:'IBM Plex Mono',monospace;font-size:.8rem;color:var(--verde);
+    background:var(--verde-suave);padding:2px 8px;border-radius:99px;font-weight:500;
+    white-space:nowrap;
+  }
+  .step h2{font-family:'Space Grotesk',sans-serif;font-size:1.15rem;font-weight:700}
+
+  /* ---- Dropzone ---- */
+  .dropzone{
+    border:2px dashed var(--grid);border-radius:var(--radius);
+    padding:36px 20px;text-align:center;cursor:pointer;
+    transition:border-color .15s, background .15s;
+    color:var(--ink-soft);
+  }
+  .dropzone:hover,.dropzone.over{border-color:var(--verde);background:var(--verde-suave)}
+  .dropzone strong{color:var(--ink)}
+  .dropzone .formats{font-family:'IBM Plex Mono',monospace;font-size:.78rem;margin-top:8px;display:block}
+  input[type=file]{display:none}
+
+  .file-list{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+  .file-card{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    border:1px solid var(--grid);border-radius:8px;padding:10px 14px;background:#fff;
+  }
+  .file-tag{
+    font-family:'IBM Plex Mono',monospace;font-size:.7rem;font-weight:500;
+    padding:3px 7px;border-radius:5px;background:var(--verde-suave);color:var(--verde);
+    text-transform:uppercase;
+  }
+  .file-tag.csv{background:#EDF0FB;color:#3A4FA3}
+  .file-name{font-weight:600;font-size:.92rem;overflow-wrap:anywhere}
+  .file-meta{font-family:'IBM Plex Mono',monospace;font-size:.75rem;color:var(--ink-soft)}
+  .file-card select{
+    font-family:'Inter',sans-serif;font-size:.82rem;padding:4px 8px;
+    border:1px solid var(--grid);border-radius:6px;background:#fff;color:var(--ink);
+  }
+  .file-remove{
+    margin-left:auto;border:none;background:none;cursor:pointer;
+    color:var(--ink-soft);font-size:1.1rem;padding:4px 8px;border-radius:6px;
+  }
+  .file-remove:hover{background:var(--alerta-suave);color:var(--alerta)}
+
+  /* ---- Matriz de columnas ---- */
+  .matrix-scroll{overflow-x:auto;border:1px solid var(--grid);border-radius:8px}
+  table.matrix{border-collapse:collapse;width:100%;font-size:.85rem}
+  .matrix th,.matrix td{padding:8px 12px;border-bottom:1px solid var(--grid);text-align:left;white-space:nowrap}
+  .matrix thead th{
+    background:var(--paper);font-family:'IBM Plex Mono',monospace;font-size:.72rem;
+    font-weight:500;color:var(--ink-soft);position:sticky;top:0;
+  }
+  .matrix td.colname{font-family:'IBM Plex Mono',monospace;font-size:.8rem;font-weight:500}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .dot.si{background:var(--verde)}
+  .dot.no{background:transparent;border:1.5px dashed #C6CFC9}
+  tr.mismatch td.colname{color:var(--alerta)}
+  .matrix-note{font-size:.82rem;color:var(--ink-soft);margin-top:10px}
+  .matrix-note .dot{vertical-align:middle;margin:0 3px}
+
+  /* ---- Opciones ---- */
+  .options{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+  .opt-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .opt-row label{font-size:.9rem;cursor:pointer;display:flex;align-items:center;gap:8px}
+  input[type=checkbox]{width:16px;height:16px;accent-color:var(--verde);cursor:pointer}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{
+    font-family:'IBM Plex Mono',monospace;font-size:.75rem;
+    border:1px solid var(--grid);border-radius:99px;padding:5px 12px;
+    background:#fff;cursor:pointer;transition:all .12s;color:var(--ink-soft);
+  }
+  .chip.on{background:var(--verde);border-color:var(--verde);color:#fff}
+  .chip:focus-visible,.dropzone:focus-visible,button:focus-visible,select:focus-visible{
+    outline:2px solid var(--verde);outline-offset:2px;
+  }
+  .opt-hint{font-size:.8rem;color:var(--ink-soft)}
+
+  /* ---- Consolidar ---- */
+  .btn{
+    font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:.95rem;
+    border:none;border-radius:8px;padding:12px 24px;cursor:pointer;
+    transition:transform .1s, box-shadow .15s;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--verde);color:#fff}
+  .btn-primary:hover{box-shadow:0 3px 10px rgba(31,122,77,.3)}
+  .btn-primary:disabled{background:#B8C9BF;cursor:not-allowed;box-shadow:none}
+  .btn-ghost{background:#fff;border:1px solid var(--grid);color:var(--ink)}
+  .btn-ghost:hover{border-color:var(--verde);color:var(--verde)}
+  .export-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  .export-row select{
+    font-size:.85rem;padding:8px 10px;border:1px solid var(--grid);border-radius:8px;background:#fff;
+  }
+
+  .summary{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:12px;margin:18px 0;
+  }
+  .kpi{border:1px solid var(--grid);border-radius:8px;padding:14px;background:var(--paper)}
+  .kpi .v{font-family:'Space Grotesk',sans-serif;font-size:1.5rem;font-weight:700}
+  .kpi .l{font-size:.75rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em}
+  .kpi.warn .v{color:var(--alerta)}
+
+  .preview-scroll{overflow:auto;max-height:420px;border:1px solid var(--grid);border-radius:8px}
+  table.preview{border-collapse:collapse;font-size:.8rem;width:100%}
+  .preview th,.preview td{padding:6px 10px;border-bottom:1px solid var(--grid);white-space:nowrap;text-align:left}
+  .preview thead th{
+    background:var(--ink);color:#fff;font-family:'IBM Plex Mono',monospace;
+    font-size:.7rem;font-weight:500;position:sticky;top:0;
+  }
+  .preview tbody tr:nth-child(even){background:var(--paper)}
+  .preview-note{font-size:.78rem;color:var(--ink-soft);margin-top:8px}
+
+  .empty{color:var(--ink-soft);font-size:.88rem;font-style:italic}
+  .hidden{display:none}
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:#fff;padding:10px 20px;border-radius:8px;
+    font-size:.88rem;opacity:0;pointer-events:none;transition:opacity .25s;
+    max-width:90vw;
+  }
+  .toast.show{opacity:1}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important}
+  }
+  @media (max-width:560px){
+    h1{font-size:1.5rem}
+    .step{padding:16px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="cell">Σ</span> Consolidador de archivos</h1>
+    <p>Uní varios Excel o CSV en un solo archivo. Detecta las columnas de cada uno, te avisa si no coinciden, y podés eliminar duplicados antes de descargar.</p>
+  </header>
+
+  <!-- PASO 1 -->
+  <section class="step">
+    <div class="step-head"><span class="step-num">PASO 1</span><h2>Cargá tus archivos</h2></div>
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Cargar archivos">
+      <strong>Arrastrá tus archivos acá</strong> o hacé clic para elegirlos
+      <span class="formats">.xlsx · .xls · .csv · .tsv</span>
+    </div>
+    <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv,.tsv,.txt">
+    <div class="file-list" id="fileList"></div>
+  </section>
+
+  <!-- PASO 2 -->
+  <section class="step" id="step2">
+    <div class="step-head"><span class="step-num">PASO 2</span><h2>Revisá las columnas</h2></div>
+    <div id="matrixWrap"><p class="empty">Cargá al menos un archivo para ver la comparación de columnas.</p></div>
+    <div class="options" id="optionsWrap" style="display:none">
+      <div class="opt-row">
+        <label><input type="checkbox" id="optNormalize" checked> Emparejar columnas ignorando mayúsculas y espacios (ej: "Ciudad " = "ciudad")</label>
+      </div>
+      <div class="opt-row">
+        <label><input type="checkbox" id="optSource" checked> Agregar columna <code style="font-family:'IBM Plex Mono',monospace;font-size:.8em">archivo_origen</code> para saber de qué archivo vino cada fila</label>
+      </div>
+      <div class="opt-row" style="flex-direction:column;align-items:flex-start">
+        <label style="font-weight:600">Eliminar duplicados por columna clave <span class="opt-hint">(opcional — elegí una o más)</span></label>
+        <div class="chips" id="keyChips"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PASO 3 -->
+  <section class="step" id="step3">
+    <div class="step-head"><span class="step-num">PASO 3</span><h2>Consolidá y descargá</h2></div>
+    <button class="btn btn-primary" id="btnMerge" disabled>Consolidar archivos</button>
+    <div id="resultWrap" class="hidden">
+      <div class="summary" id="summaryWrap"></div>
+      <div class="preview-scroll"><table class="preview" id="previewTable"></table></div>
+      <p class="preview-note" id="previewNote"></p>
+      <div class="export-row">
+        <button class="btn btn-primary" id="btnXlsx">Descargar Excel (.xlsx)</button>
+        <button class="btn btn-ghost" id="btnCsv">Descargar CSV</button>
+        <select id="csvDelim" aria-label="Delimitador del CSV">
+          <option value=";">CSV con punto y coma ( ; )</option>
+          <option value=",">CSV con coma ( , )</option>
+          <option value="\t">CSV con tabulación</option>
+        </select>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ---------- Estado ---------- */
+  let files = [];        // {id, name, ext, workbook?, sheetNames?, selectedSheet, headers[], rows[]}
+  let merged = null;     // {headers[], rows[], stats}
+  let nextId = 1;
+
+  const $ = id => document.getElementById(id);
+  const dropzone = $('dropzone'), fileInput = $('fileInput'), fileList = $('fileList');
+  const toast = $('toast');
+  let toastTimer;
+
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>toast.classList.remove('show'), 3500);
+  }
+
+  /* ---------- Carga de archivos ---------- */
+  dropzone.addEventListener('click', ()=>fileInput.click());
+  dropzone.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();} });
+  ['dragenter','dragover'].forEach(ev=>dropzone.addEventListener(ev, e=>{e.preventDefault();dropzone.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev, e=>{e.preventDefault();dropzone.classList.remove('over');}));
+  dropzone.addEventListener('drop', e=>handleFiles(e.dataTransfer.files));
+  fileInput.addEventListener('change', ()=>{ handleFiles(fileInput.files); fileInput.value=''; });
+
+  function handleFiles(fileListRaw){
+    Array.from(fileListRaw).forEach(f=>{
+      const ext = f.name.split('.').pop().toLowerCase();
+      if(['xlsx','xls','xlsm'].includes(ext)) loadExcel(f, ext);
+      else if(['csv','tsv','txt'].includes(ext)) loadCsv(f, ext);
+      else showToast('Formato no soportado: ' + f.name);
+    });
+  }
+
+  function loadExcel(file, ext){
+    const reader = new FileReader();
+    reader.onload = e=>{
+      try{
+        const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+        const entry = {
+          id: nextId++, name: file.name, ext,
+          workbook: wb, sheetNames: wb.SheetNames.slice(),
+          selectedSheet: wb.SheetNames[0], headers: [], rows: []
+        };
+        readSheet(entry);
+        files.push(entry);
+        refreshAll();
+      }catch(err){ showToast('No se pudo leer ' + file.name + ': ' + err.message); }
+    };
+    reader.onerror = ()=>showToast('Error al leer ' + file.name);
+    reader.readAsArrayBuffer(file);
+  }
+
+  function readSheet(entry){
+    const ws = entry.workbook.Sheets[entry.selectedSheet];
+    const json = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+    entry.rows = json;
+    entry.headers = json.length ? Object.keys(json[0]) : rowHeadersFromSheet(ws);
+  }
+
+  function rowHeadersFromSheet(ws){
+    // hoja con solo encabezados y sin filas de datos
+    const arr = XLSX.utils.sheet_to_json(ws, {header:1});
+    return (arr[0]||[]).map(String);
+  }
+
+  function loadCsv(file, ext){
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: 'greedy',
+      delimiter: ext==='tsv' ? '\t' : '',   // '' = autodetección (coma, punto y coma, tab)
+      transformHeader: h=>h.replace(/^\uFEFF/,''), // sacar BOM si viene pegado al primer encabezado
+      complete: res=>{
+        if(res.errors.length && !res.data.length){
+          showToast('No se pudo interpretar ' + file.name);
+          return;
+        }
+        files.push({
+          id: nextId++, name: file.name, ext,
+          selectedSheet: null, sheetNames: null,
+          headers: res.meta.fields || [],
+          rows: res.data
+        });
+        refreshAll();
+      },
+      error: err=>showToast('Error al leer ' + file.name + ': ' + err.message)
+    });
+  }
+
+  /* ---------- Render lista de archivos ---------- */
+  function renderFileList(){
+    fileList.innerHTML = '';
+    files.forEach(f=>{
+      const card = document.createElement('div');
+      card.className = 'file-card';
+
+      const tag = document.createElement('span');
+      tag.className = 'file-tag' + (['csv','tsv','txt'].includes(f.ext)?' csv':'');
+      tag.textContent = f.ext;
+      card.appendChild(tag);
+
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = f.name;
+      card.appendChild(name);
+
+      const meta = document.createElement('span');
+      meta.className = 'file-meta';
+      meta.textContent = f.rows.length.toLocaleString('es-PY') + ' filas · ' + f.headers.length + ' col.';
+      card.appendChild(meta);
+
+      if(f.sheetNames && f.sheetNames.length > 1){
+        const sel = document.createElement('select');
+        sel.setAttribute('aria-label','Hoja de ' + f.name);
+        f.sheetNames.forEach(sn=>{
+          const o = document.createElement('option');
+          o.value = sn; o.textContent = 'Hoja: ' + sn;
+          if(sn === f.selectedSheet) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', ()=>{
+          f.selectedSheet = sel.value;
+          readSheet(f);
+          refreshAll();
+        });
+        card.appendChild(sel);
+      }
+
+      const rm = document.createElement('button');
+      rm.className = 'file-remove';
+      rm.setAttribute('aria-label','Quitar ' + f.name);
+      rm.textContent = '✕';
+      rm.addEventListener('click', ()=>{
+        files = files.filter(x=>x.id !== f.id);
+        refreshAll();
+      });
+      card.appendChild(rm);
+
+      fileList.appendChild(card);
+    });
+  }
+
+  /* ---------- Columnas: normalización y unión ---------- */
+  function normKey(h){
+    const s = String(h).trim();
+    return $('optNormalize').checked ? s.toLowerCase().replace(/\s+/g,' ') : s;
+  }
+
+  function unionColumns(){
+    // devuelve [{key, display, presentIn:Set(fileId)}] en orden de primera aparición
+    const map = new Map();
+    files.forEach(f=>{
+      f.headers.forEach(h=>{
+        const k = normKey(h);
+        if(!map.has(k)) map.set(k, {key:k, display:String(h).trim(), presentIn:new Set()});
+        map.get(k).presentIn.add(f.id);
+      });
+    });
+    return Array.from(map.values());
+  }
+
+  /* ---------- Render matriz + chips ---------- */
+  let selectedKeys = new Set();
+
+  function renderMatrix(){
+    const wrap = $('matrixWrap');
+    if(!files.length){
+      wrap.innerHTML = '<p class="empty">Cargá al menos un archivo para ver la comparación de columnas.</p>';
+      $('optionsWrap').style.display = 'none';
+      return;
+    }
+    $('optionsWrap').style.display = '';
+
+    const cols = unionColumns();
+    let mismatches = 0;
+
+    let html = '<div class="matrix-scroll"><table class="matrix"><thead><tr><th>Columna</th>';
+    files.forEach(f=>{ html += '<th>' + escapeHtml(shorten(f.name, 22)) + '</th>'; });
+    html += '</tr></thead><tbody>';
+    cols.forEach(c=>{
+      const inAll = c.presentIn.size === files.length;
+      if(!inAll) mismatches++;
+      html += '<tr class="' + (inAll?'':'mismatch') + '"><td class="colname">' + escapeHtml(c.display) + '</td>';
+      files.forEach(f=>{
+        html += '<td><span class="dot ' + (c.presentIn.has(f.id)?'si':'no') + '"></span></td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    html += '<p class="matrix-note"><span class="dot si"></span> la columna existe en ese archivo · <span class="dot no"></span> no existe (se completa vacía al consolidar)';
+    if(mismatches) html += ' — <strong style="color:var(--alerta)">' + mismatches + ' columna(s) no está(n) en todos los archivos.</strong> Revisá que no sea la misma columna con otro nombre.';
+    html += '</p>';
+    wrap.innerHTML = html;
+
+    // chips de clave para duplicados
+    const chips = $('keyChips');
+    chips.innerHTML = '';
+    const validKeys = new Set(cols.map(c=>c.key));
+    selectedKeys = new Set(Array.from(selectedKeys).filter(k=>validKeys.has(k)));
+    cols.forEach(c=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (selectedKeys.has(c.key)?' on':'');
+      b.textContent = c.display;
+      b.setAttribute('aria-pressed', selectedKeys.has(c.key));
+      b.addEventListener('click', ()=>{
+        if(selectedKeys.has(c.key)) selectedKeys.delete(c.key); else selectedKeys.add(c.key);
+        renderMatrix();
+      });
+      chips.appendChild(b);
+    });
+  }
+
+  function shorten(s, n){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  /* ---------- Consolidar ---------- */
+  $('btnMerge').addEventListener('click', consolidate);
+  $('optNormalize').addEventListener('change', ()=>{ renderMatrix(); });
+
+  function consolidate(){
+    if(!files.length) return;
+    const cols = unionColumns();
+    const addSource = $('optSource').checked;
+    const headers = cols.map(c=>c.display);
+    if(addSource) headers.push('archivo_origen');
+
+    const out = [];
+    const perFile = [];
+    files.forEach(f=>{
+      // mapa header original -> key normalizada
+      const keyOf = {};
+      f.headers.forEach(h=>{ keyOf[h] = normKey(h); });
+      f.rows.forEach(r=>{
+        const row = {};
+        cols.forEach(c=>{ row[c.display] = ''; });
+        Object.keys(r).forEach(h=>{
+          const k = keyOf[h] !== undefined ? keyOf[h] : normKey(h);
+          const col = cols.find(c=>c.key===k);
+          if(col) row[col.display] = r[h];
+        });
+        if(addSource) row['archivo_origen'] = f.name;
+        out.push(row);
+      });
+      perFile.push({name:f.name, n:f.rows.length});
+    });
+
+    // deduplicación
+    let removed = 0;
+    let finalRows = out;
+    if(selectedKeys.size){
+      const keyCols = cols.filter(c=>selectedKeys.has(c.key)).map(c=>c.display);
+      const seen = new Set();
+      finalRows = [];
+      out.forEach(r=>{
+        const k = keyCols.map(c=>String(r[c]).trim()).join('\u241F');
+        if(seen.has(k)){ removed++; return; }
+        seen.add(k);
+        finalRows.push(r);
+      });
+    }
+
+    merged = {headers, rows:finalRows, stats:{files:files.length, input:out.length, removed, output:finalRows.length, perFile}};
+    renderResult();
+    showToast('Listo: ' + finalRows.length.toLocaleString('es-PY') + ' filas consolidadas.');
+  }
+
+  function renderResult(){
+    $('resultWrap').classList.remove('hidden');
+    const s = merged.stats;
+    $('summaryWrap').innerHTML =
+      kpi(s.files, 'Archivos') +
+      kpi(s.input.toLocaleString('es-PY'), 'Filas leídas') +
+      kpi(s.removed.toLocaleString('es-PY'), 'Duplicados quitados', s.removed>0) +
+      kpi(s.output.toLocaleString('es-PY'), 'Filas finales');
+
+    const LIMIT = 50;
+    const t = $('previewTable');
+    let html = '<thead><tr>' + merged.headers.map(h=>'<th>'+escapeHtml(h)+'</th>').join('') + '</tr></thead><tbody>';
+    merged.rows.slice(0, LIMIT).forEach(r=>{
+      html += '<tr>' + merged.headers.map(h=>'<td>'+escapeHtml(r[h]===undefined?'':r[h])+'</td>').join('') + '</tr>';
+    });
+    html += '</tbody>';
+    t.innerHTML = html;
+    $('previewNote').textContent = merged.rows.length > LIMIT
+      ? 'Vista previa de las primeras ' + LIMIT + ' filas. El archivo descargado incluye las ' + merged.rows.length.toLocaleString('es-PY') + ' filas.'
+      : 'Mostrando las ' + merged.rows.length + ' filas.';
+    $('resultWrap').scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+
+  function kpi(v, l, warn){
+    return '<div class="kpi'+(warn?' warn':'')+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>';
+  }
+
+  /* ---------- Exportar ---------- */
+  $('btnXlsx').addEventListener('click', ()=>{
+    if(!merged) return;
+    const ws = XLSX.utils.json_to_sheet(merged.rows, {header:merged.headers});
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Consolidado');
+    XLSX.writeFile(wb, 'consolidado_' + stamp() + '.xlsx');
+  });
+
+  $('btnCsv').addEventListener('click', ()=>{
+    if(!merged) return;
+    let delim = $('csvDelim').value;
+    if(delim === '\\t') delim = '\t';
+    const csv = Papa.unparse({fields:merged.headers, data:merged.rows.map(r=>merged.headers.map(h=>r[h]))}, {delimiter:delim});
+    const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'}); // BOM para que Excel abra bien los acentos
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'consolidado_' + stamp() + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  });
+
+  function stamp(){
+    const d = new Date();
+    const p = n=>String(n).padStart(2,'0');
+    return d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+  }
+
+  /* ---------- Refresh general ---------- */
+  function refreshAll(){
+    renderFileList();
+    renderMatrix();
+    $('btnMerge').disabled = files.length === 0;
+    if(files.length === 0){
+      merged = null;
+      $('resultWrap').classList.add('hidden');
+    }
+  }
+})();
+</script>
+</body>
+</html>
